@@ -1,13 +1,13 @@
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.sse import EventSourceResponse
+from sse_starlette.sse import EventSourceResponse
 from contextlib import asynccontextmanager
 from google import genai
 from google.genai import types
-from google.genai.errors import ServerError
+from google.genai.errors import ServerError, ClientError
 from typing import Annotated
-from collections.abc import AsyncIterable
+import json
 
 from app.config import settings
 from app.models import Message, ChatRequest, ChatResponse
@@ -27,9 +27,10 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['*'], #For dev only will change in production
-    allow_methods=['GET', 'POST'],
-    allow_headers=['*']
+    allow_origins=settings.allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 #Helper convertor funciton
@@ -58,8 +59,8 @@ async def get_ai_client(req: Request) -> genai.Client:
 def health():
     return {'status': 'ok'}
 
-@app.post("/chat", response_class=EventSourceResponse)
-async def chat_stream(req: ChatRequest, client: Annotated[genai.Client, Depends(get_ai_client)]) -> AsyncIterable[ChatResponse]:
+@app.post("/chat")
+async def chat_stream(req: ChatRequest, client: Annotated[genai.Client, Depends(get_ai_client)]):
     system_prompt = PERSONAS.get(req.persona)
 
     if not system_prompt:
@@ -71,10 +72,30 @@ async def chat_stream(req: ChatRequest, client: Annotated[genai.Client, Depends(
     history = to_gemini_content(req.messages[:-1])
     last_message = req.messages[-1].content
 
-    chat = client.aio.chats.create(
-        model=settings.ai_model_name,
-        config=types.GenerateContentConfig(system_instruction=system_prompt),
-        history=history,
-    )
-    async for chunk in await chat.send_message_stream(last_message):
-        yield ChatResponse(response = chunk.text or "", persona=req.persona)
+    async def event_generator():
+        try:
+            chat = client.aio.chats.create(
+                model=settings.ai_model_name,
+                config=types.GenerateContentConfig(system_instruction=system_prompt),
+                history=history,
+            )
+            async for chunk in await chat.send_message_stream(last_message):
+                data = ChatResponse(response=chunk.text or "", persona=req.persona).model_dump_json()
+                yield {"data": data}
+        except ClientError as e:
+            if e.code == 429:
+                error_msg = "\n\n[System: API quota exhausted. You've hit the free-tier rate limit. Please wait a moment and try again, or upgrade your Gemini API plan.]"
+            else:
+                error_msg = f"\n\n[System: API error ({e.code}): {e.message}]"
+            data = ChatResponse(response=error_msg, persona=req.persona).model_dump_json()
+            yield {"data": data}
+        except ServerError as e:
+            error_msg = f"\n\n[System: The AI model is currently experiencing issues: {e.message}. Please try again later.]"
+            data = ChatResponse(response=error_msg, persona=req.persona).model_dump_json()
+            yield {"data": data}
+        except Exception as e:
+            error_msg = f"\n\n[System: An unexpected error occurred: {type(e).__name__}: {e}]"
+            data = ChatResponse(response=error_msg, persona=req.persona).model_dump_json()
+            yield {"data": data}
+
+    return EventSourceResponse(event_generator())

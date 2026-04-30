@@ -2,7 +2,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     gemini_api_key: str
-    ai_model_name: str = 'gemini-2.5-flash'
+    ai_model_name: str = 'gemini-3-flash-preview'
+    allowed_origins: list[str] = ["*"]
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8"
