@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Send, User, Bot, Sparkles, MessageCircle, Zap } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, Variants } from "framer-motion";
 
 type Message = {
   role: "user" | "assistant";
@@ -64,7 +64,7 @@ const PERSONA_SUGGEST: Record<Persona, string[]> = {
 };
 
 // ——— Transition presets ———
-const containerVariants = {
+const containerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
@@ -72,7 +72,7 @@ const containerVariants = {
   },
 };
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { opacity: 0, y: 16 },
   visible: {
     opacity: 1,
@@ -81,7 +81,7 @@ const itemVariants = {
   },
 };
 
-const messageVariants = {
+const messageVariants: Variants = {
   hidden: { opacity: 0, y: 20, scale: 0.97 },
   visible: {
     opacity: 1,
@@ -103,11 +103,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const animatedCountRef = useRef<Record<Persona, number>>({
-    anshuman: 0,
-    abhimanyu: 0,
-    kshitij: 0,
-  });
+
 
   const currentMessages = messages[activePersona];
   const activePersonaData = PERSONAS.find((p) => p.id === activePersona)!;
@@ -127,7 +123,7 @@ export default function Home() {
   const handlePersonaChange = (personaId: Persona) => {
     if (personaId === activePersona) return;
     setActivePersona(personaId);
-    animatedCountRef.current[personaId] = 0;
+
     setMessages((prev) => ({
       ...prev,
       [personaId]: [],
@@ -168,7 +164,7 @@ export default function Home() {
           } else if (errData.detail) {
             errMessage = errData.detail;
           }
-        } catch (e) {
+        } catch {
           // Fallback to initial errMessage if it's not JSON
         }
         throw new Error(errMessage);
@@ -193,7 +189,7 @@ export default function Home() {
 
         for (const line of lines) {
           if (line.startsWith("data: ")) {
-            let dataStr = line.slice(6).trim();
+            const dataStr = line.slice(6).trim();
             if (!dataStr || dataStr === "[DONE]") continue;
             try {
               let parsed = JSON.parse(dataStr);
@@ -224,21 +220,22 @@ export default function Home() {
                   });
                 }
               }
-            } catch (err) {
+            } catch {
               // Not a valid JSON or stream ended
             }
           }
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to connect to the server.";
       setMessages((prev) => ({
         ...prev,
         [activePersona]: [
           ...prev[activePersona],
           {
             role: "assistant",
-            content: error.message || "Failed to connect to the server.",
+            content: errorMessage,
           },
         ],
       }));
@@ -501,15 +498,10 @@ export default function Home() {
                   className="flex-1 flex flex-col justify-end space-y-5"
                 >
                   {currentMessages.map((msg, index) => {
-                    const isNew =
-                      index >= animatedCountRef.current[activePersona];
-                    if (index >= animatedCountRef.current[activePersona]) {
-                      animatedCountRef.current[activePersona] = index + 1;
-                    }
                     return (
                       <motion.div
                         key={`${activePersona}-${index}`}
-                        initial={isNew ? { opacity: 0, y: 16 } : false}
+                        initial={{ opacity: 0, y: 16 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{
                           duration: 0.3,
@@ -546,8 +538,8 @@ export default function Home() {
                           </p>
                         </div>
                       </motion.div>
-                    );
-                  })}
+                      );
+                    })}
 
                   {/* Typing indicator */}
                   {isLoading &&
