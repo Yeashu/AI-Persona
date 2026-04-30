@@ -1,0 +1,11 @@
+[project]
+name = "persona-chatbot-backend"
+version = "0.1.0"
+description = "A fastapi backend for AI persona chatbot"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.136.1",
+    "google-genai>=1.74.0",
+    "pydantic-settings>=2.14.0",
+]
